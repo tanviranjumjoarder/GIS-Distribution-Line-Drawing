@@ -1,0 +1,9 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+outputs/
+uploads/
+*.md
+Run GIS App.bat
+.DS_Store

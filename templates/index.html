@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GIS Shapefile Generator</title>
+<style>
+  :root{
+    --indigo:#6366f1; --violet:#8b5cf6; --cyan:#06b6d4; --rose:#f43f5e;
+    --emerald:#10b981; --amber:#f59e0b;
+    --grad:linear-gradient(120deg,#6366f1,#8b5cf6 45%,#06b6d4);
+    --grad-warm:linear-gradient(120deg,#f43f5e,#f59e0b);
+    --sans:"Segoe UI",system-ui,Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  /* ---------- LIGHT (default) ---------- */
+  :root{
+    --bg1:#eef2ff; --bg2:#f7f8ff;
+    --ink:#0f172a; --muted:#64748b; --line:rgba(15,23,42,.08);
+    --glass:rgba(255,255,255,.66); --glass-brd:rgba(255,255,255,.75);
+    --field:rgba(255,255,255,.85);
+    --wire:#6366f1; --flow:#06b6d4; --node:#8b5cf6; --pole:#6366f1; --gridop:.45;
+    --shadow:0 10px 30px -12px rgba(79,70,229,.30), 0 4px 12px -6px rgba(15,23,42,.12);
+    --blob1:#a5b4fc; --blob2:#67e8f9;
+  }
+  /* ---------- DARK ---------- */
+  body.dark{
+    --bg1:#070b1a; --bg2:#0c1226;
+    --ink:#e8ecf8; --muted:#9aa6c4; --line:rgba(255,255,255,.10);
+    --glass:rgba(18,24,46,.55); --glass-brd:rgba(255,255,255,.10);
+    --field:rgba(12,18,38,.7);
+    --wire:#38bdf8; --flow:#22d3ee; --node:#a78bfa; --pole:#60a5fa; --gridop:.8;
+    --shadow:0 14px 40px -14px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.03);
+    --blob1:#1e3a8a; --blob2:#0e7490;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;min-height:100vh;color:var(--ink);font-family:var(--sans);line-height:1.55;
+       overflow-x:hidden;transition:color .4s;}
+  /* background */
+  .bg{position:fixed;inset:0;z-index:-1;overflow:hidden;
+      background:radial-gradient(1200px 600px at 75% -10%,var(--bg2),var(--bg1));transition:background .5s}
+  .blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.4;animation:float 20s ease-in-out infinite}
+  .b1{width:440px;height:440px;background:var(--blob1);top:-130px;left:-90px}
+  .b2{width:400px;height:400px;background:var(--blob2);bottom:-140px;right:-90px;animation-delay:-7s}
+  @keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(50px,-30px) scale(1.1)}}
+  /* distribution network */
+  .grid-bg{position:absolute;inset:0;width:100%;height:100%;opacity:var(--gridop);
+           pointer-events:none;transition:opacity .5s}
+  .wire{stroke:var(--wire);stroke-width:1.5;fill:none;opacity:.55;stroke-linecap:round;
+        stroke-dasharray:5 12;animation:flowdash 2.4s linear infinite}
+  @keyframes flowdash{to{stroke-dashoffset:-170}}
+  .pole{stroke:var(--pole);stroke-width:1.6;fill:none;opacity:.5;stroke-linecap:round}
+  .sub{stroke:var(--pole);fill:none;stroke-width:1.7;opacity:.6}
+  .flow{fill:var(--flow);filter:url(#glow)}
+  .node{fill:var(--node);filter:url(#glow)}
+  .node.s{animation:pulse 3s ease-in-out infinite}
+  .node.s2{animation:pulse 3s ease-in-out infinite;animation-delay:-1.5s}
+  @keyframes pulse{0%,100%{opacity:.5;r:4}50%{opacity:1;r:6}}
+
+  .wrap{max-width:880px;margin:0 auto;padding:0 22px 80px;position:relative}
+  /* header */
+  header{display:flex;align-items:center;gap:16px;padding:40px 0 14px}
+  .mark{width:58px;height:58px;flex:0 0 auto;border-radius:17px;background:var(--grad);
+        display:grid;place-items:center;box-shadow:var(--shadow);position:relative;
+        animation:pop .7s cubic-bezier(.2,.9,.25,1.2) both}
+  .mark::after{content:"";position:absolute;inset:0;border-radius:17px;background:var(--grad);filter:blur(15px);opacity:.55;z-index:-1}
+  .mark svg{width:32px;height:32px}
+  h1{font-size:30px;margin:0;font-weight:800;letter-spacing:-.5px;
+     background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:14px;margin-top:3px;font-weight:500}
+  @keyframes pop{from{transform:scale(.6) rotate(-12deg);opacity:0}to{transform:none;opacity:1}}
+  .toggle{margin-left:auto;width:46px;height:46px;border-radius:13px;border:1px solid var(--line);
+        background:var(--glass);backdrop-filter:blur(10px);cursor:pointer;display:grid;place-items:center;
+        color:var(--ink);transition:.25s;box-shadow:var(--shadow)}
+  .toggle:hover{transform:translateY(-2px) rotate(8deg);color:var(--violet)}
+  .toggle svg{width:21px;height:21px}
+
+  /* cards */
+  .card{background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+        border:1px solid var(--glass-brd);border-radius:22px;box-shadow:var(--shadow);
+        padding:28px;margin-bottom:22px;position:relative;overflow:hidden;transition:background .4s,border .4s}
+  .card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad)}
+  .step{display:flex;align-items:center;gap:11px;margin:0 0 18px}
+  .step .n{width:27px;height:27px;border-radius:9px;background:var(--grad);color:#fff;font-size:14px;
+        font-weight:700;display:grid;place-items:center;box-shadow:0 4px 12px -3px rgba(99,102,241,.6)}
+  .step h2{font-size:18px;margin:0;font-weight:700;letter-spacing:-.2px}
+  /* dropzone */
+  .drop{border:2px dashed color-mix(in srgb,var(--wire) 45%,transparent);border-radius:18px;
+        background:var(--field);padding:34px 20px;text-align:center;cursor:pointer;position:relative;
+        transition:.22s cubic-bezier(.2,.7,.2,1)}
+  .drop:hover{border-color:var(--violet);transform:translateY(-2px)}
+  .drop.drag{border-color:var(--cyan);box-shadow:0 0 0 6px rgba(6,182,212,.14);transform:scale(1.01)}
+  .drop .ic{width:50px;height:50px;margin:0 auto 12px;border-radius:14px;background:var(--grad);
+        display:grid;place-items:center;box-shadow:0 8px 20px -8px rgba(99,102,241,.7);transition:.22s}
+  .drop:hover .ic{transform:translateY(-3px) rotate(-5deg)}
+  .drop .ic svg{width:26px;height:26px;color:#fff}
+  .drop b{font-size:16px;font-weight:700}
+  .drop small{display:block;color:var(--muted);margin-top:5px;font-size:13px}
+  .files{display:flex;flex-direction:column;gap:9px;margin-top:15px}
+  .files:empty{display:none}
+  .files .file{margin-top:0}
+  .files .file .tag{margin-left:auto;margin-right:6px;font-size:11px;font-weight:700;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.5px}
+  .file{margin-top:15px;display:none;align-items:center;gap:11px;font-size:14px;font-weight:600;
+        background:color-mix(in srgb,var(--wire) 12%,transparent);
+        border:1px solid color-mix(in srgb,var(--wire) 30%,transparent);
+        border-radius:13px;padding:11px 15px;animation:rise .4s ease both}
+  .file.show{display:flex}
+  .file .dot{width:9px;height:9px;border-radius:50%;background:var(--emerald);box-shadow:0 0 0 4px rgba(16,185,129,.2)}
+  .file .x{margin-left:auto;color:var(--muted);cursor:pointer;font-weight:800;font-size:16px;transition:.15s}
+  .file .x:hover{color:var(--rose);transform:scale(1.15)}
+  .orpath{margin-top:18px}
+  .orpath label{font-size:11.5px;color:var(--muted);display:block;margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.7px}
+  .orpath input{width:100%;padding:12px 15px;border:1px solid var(--line);border-radius:12px;font-family:var(--sans);
+        font-size:14px;background:var(--field);color:var(--ink);transition:.18s}
+  .orpath input:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 4px rgba(139,92,246,.18)}
+  .hintbtn{background:none;border:0;color:var(--indigo);font-size:13px;cursor:pointer;padding:9px 0 0;font-weight:700;
+        display:inline-flex;align-items:center;gap:5px;transition:.15s}
+  .hintbtn:hover{gap:9px;color:var(--violet)}
+  /* button */
+  .actions{display:flex;gap:14px;align-items:center;margin-top:24px;flex-wrap:wrap}
+  .btn{font-family:var(--sans);font-size:15px;font-weight:700;border:0;border-radius:13px;padding:14px 26px;cursor:pointer;
+        display:inline-flex;align-items:center;gap:10px;transition:.2s cubic-bezier(.2,.7,.2,1);position:relative;overflow:hidden}
+  .btn.primary{background:var(--grad);color:#fff;box-shadow:0 10px 24px -8px rgba(99,102,241,.65)}
+  .btn.primary::after{content:"";position:absolute;top:0;left:-120%;width:60%;height:100%;
+        background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg)}
+  .btn.primary:hover{transform:translateY(-2px);box-shadow:0 16px 30px -8px rgba(99,102,241,.78)}
+  .btn.primary:hover::after{animation:shimmer 1s ease}
+  @keyframes shimmer{to{left:140%}}
+  .btn.primary:active{transform:translateY(0) scale(.98)}
+  .btn.primary:disabled{opacity:.6;cursor:default;transform:none}
+  .btn.ghost{background:var(--field);border:1px solid var(--line);color:var(--ink)}
+  .btn.ghost:hover{border-color:var(--violet);color:var(--violet);transform:translateY(-2px)}
+  .btn.warm{background:var(--grad-warm);color:#fff;box-shadow:0 10px 24px -8px rgba(244,63,94,.6)}
+  .btn.warm:hover{transform:translateY(-2px);box-shadow:0 16px 30px -8px rgba(244,63,94,.72)}
+  .spin{width:17px;height:17px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;
+        animation:sp .7s linear infinite;display:none}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .busy .spin{display:inline-block}
+  .tiny{font-size:12.5px;color:var(--muted);font-weight:500}
+  /* results */
+  #result{display:none}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px;margin:6px 0 18px}
+  .stat{background:var(--field);border:1px solid var(--line);border-radius:15px;padding:16px 17px;
+        opacity:0;transform:translateY(12px)}
+  .stat.in{animation:rise .55s cubic-bezier(.2,.7,.2,1) forwards}
+  .stat .v{font-size:28px;font-weight:800;line-height:1;letter-spacing:-.5px;
+        background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat .k{font-size:11.5px;color:var(--muted);margin-top:7px;text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+  .pill{display:inline-block;background:color-mix(in srgb,var(--wire) 13%,transparent);color:var(--indigo);
+        border:1px solid color-mix(in srgb,var(--wire) 24%,transparent);border-radius:999px;
+        padding:4px 13px;font-size:13px;font-weight:600;margin:2px 6px 2px 0}
+  body.dark .pill{color:var(--flow)}
+  .warnbox{background:color-mix(in srgb,var(--amber) 13%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);
+        border-radius:14px;padding:14px 17px;margin:6px 0 18px;animation:rise .5s ease both}
+  .warnbox h4{margin:0 0 7px;font-size:12.5px;color:var(--amber);text-transform:uppercase;letter-spacing:.6px}
+  .warnbox ul{margin:0;padding-left:19px;font-size:13.5px;color:var(--muted)}
+  .ok{display:flex;align-items:center;gap:11px;margin-bottom:18px;font-size:15px;font-weight:600}
+  .check{width:30px;height:30px;flex:0 0 auto}
+  .check circle{stroke:var(--emerald);stroke-width:2.5;fill:none;stroke-dasharray:80;stroke-dashoffset:80;animation:draw .5s ease forwards}
+  .check path{stroke:var(--emerald);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;animation:draw .35s .35s ease forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .dls{display:flex;gap:13px;flex-wrap:wrap}
+  .err{background:color-mix(in srgb,var(--rose) 13%,transparent);border:1px solid color-mix(in srgb,var(--rose) 35%,transparent);
+        color:var(--rose);border-radius:13px;padding:14px 17px;font-size:14px;font-weight:500;margin-top:16px;display:none;animation:rise .4s ease both}
+  .err.show{display:block}
+  .note{font-size:12.5px;color:var(--muted);margin:18px 0 0;line-height:1.7}
+  code{background:color-mix(in srgb,var(--wire) 14%,transparent);color:var(--indigo);border-radius:6px;padding:1.5px 7px;font-size:12.5px;font-weight:600}
+  body.dark code{color:var(--flow)}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin-top:10px;line-height:1.8;font-weight:500}
+  .reveal{opacity:0;transform:translateY(16px)}
+  .reveal.in{animation:rise .6s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .banner{display:none;background:linear-gradient(120deg,#f59e0b,#f43f5e);color:#fff;border-radius:14px;
+        padding:15px 18px;margin:22px 0 0;font-size:13.5px;font-weight:600;line-height:1.65;box-shadow:var(--shadow)}
+  .banner.show{display:block;animation:rise .45s ease both}
+  .banner code{background:rgba(255,255,255,.22);color:#fff}
+  .banner b{font-weight:800}
+</style>
+</head>
+<body>
+<div class="bg">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <svg class="grid-bg" viewBox="0 0 1440 820" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <symbol id="pole" viewBox="0 0 24 46"><line class="pole" x1="12" y1="4" x2="12" y2="46"/>
+        <line class="pole" x1="3" y1="12" x2="21" y2="12"/><line class="pole" x1="5" y1="19" x2="19" y2="19"/></symbol>
+    </defs>
+    <!-- wires (feeder + branches) -->
+    <g>
+      <path id="w0" class="wire" d="M160,430 C300,430 330,388 450,386 S690,448 740,424 S950,360 1020,384 S1210,432 1300,430"/>
+      <path id="w1" class="wire" d="M450,386 C448,300 440,250 452,182"/>
+      <path id="w2" class="wire" d="M740,424 C736,520 716,584 706,652"/>
+      <path id="w3" class="wire" d="M1020,384 C1020,292 1014,222 1020,150"/>
+      <path id="w4" class="wire" d="M1300,430 C1306,544 1306,604 1304,664"/>
+      <path id="w5" class="wire" d="M450,386 C386,332 306,300 258,256"/>
+      <path id="w6" class="wire" d="M740,424 C672,470 612,520 566,562"/>
+      <path id="w7" class="wire" d="M1020,384 C1078,332 1118,292 1160,252"/>
+    </g>
+    <!-- substation -->
+    <g class="sub" transform="translate(132,408)">
+      <rect x="0" y="0" width="40" height="34" rx="4"/><line x1="9" y1="8" x2="9" y2="26"/><line x1="20" y1="6" x2="20" y2="28"/><line x1="31" y1="9" x2="31" y2="25"/>
+    </g>
+    <!-- poles -->
+    <use href="#pole" x="441" y="160" width="22" height="44"/><use href="#pole" x="695" y="650" width="22" height="44"/>
+    <use href="#pole" x="1009" y="128" width="22" height="44"/><use href="#pole" x="1293" y="662" width="22" height="44"/>
+    <use href="#pole" x="247" y="234" width="22" height="44"/><use href="#pole" x="555" y="560" width="22" height="44"/>
+    <use href="#pole" x="1149" y="230" width="22" height="44"/>
+    <!-- glowing nodes -->
+    <g><circle class="node s" cx="450" cy="386" r="4"/><circle class="node s2" cx="740" cy="424" r="4"/>
+       <circle class="node s" cx="1020" cy="384" r="4"/><circle class="node s2" cx="1300" cy="430" r="4"/>
+       <circle class="node s" cx="152" cy="425" r="5"/></g>
+    <!-- current pulses -->
+    <g>
+      <circle class="flow" r="3.6"><animateMotion dur="5s" repeatCount="indefinite" rotate="auto"><mpath href="#w0"/></animateMotion></circle>
+      <circle class="flow" r="3" begin="-2.5s"><animateMotion dur="5s" begin="-2.5s" repeatCount="indefinite"><mpath href="#w0"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="3.6s" repeatCount="indefinite"><mpath href="#w1"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="4.2s" repeatCount="indefinite"><mpath href="#w2"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="3.9s" repeatCount="indefinite"><mpath href="#w3"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="4.6s" repeatCount="indefinite"><mpath href="#w4"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#w5"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="4.1s" repeatCount="indefinite"><mpath href="#w6"/></animateMotion></circle>
+      <circle class="flow" r="3"><animateMotion dur="3.7s" repeatCount="indefinite"><mpath href="#w7"/></animateMotion></circle>
+    </g>
+  </svg>
+</div>
+
+<div class="wrap">
+  <header class="reveal">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2 3 6.5 12 11l9-4.5L12 2z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 17.5 12 22l9-4.5"/>
+      </svg>
+    </div>
+    <div>
+      <h1>GIS Shapefile Generator</h1>
+      <div class="sub">Turn a pole data sheet into ready-to-merge point &amp; line shapefiles</div>
+    </div>
+    <button class="toggle" id="theme" title="Toggle dark / light"><svg id="themeic"></svg></button>
+  </header>
+
+  <div class="banner" id="offline">
+    ⚠ <b>The app engine isn't running here</b> — this looks like a preview or the file opened directly,
+    so the buttons can't generate files.<br>
+    To use the app: double-click <code>Run GIS App.bat</code> and work in the browser tab it opens
+    at <code>http://127.0.0.1:5000/</code>.
+  </div>
+
+  <div class="card reveal">
+    <div class="step"><span class="n">1</span><h2>Add your data sheet</h2></div>
+    <div class="drop" id="drop">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></div>
+      <b>Drag &amp; drop one or more spreadsheets</b>
+      <small>or click to browse — accepts .xls, .xlsx, .xlsm · add as many as you like</small>
+      <input type="file" id="file" accept=".xls,.xlsx,.xlsm" multiple hidden>
+    </div>
+    <div class="files" id="filelist"></div>
+    {% if not hosted %}
+    <div class="orpath">
+      <label>…or add files by full path</label>
+      <div style="display:flex;gap:9px">
+        <input type="text" id="path" placeholder="C:\path\to\data sheet.xlsx" spellcheck="false" style="flex:1">
+        <button class="btn ghost" id="addpath" type="button" style="padding:12px 18px">Add</button>
+      </div>
+      <button class="hintbtn" id="usedownloads" type="button">↳ Add the latest spreadsheet from my Downloads</button>
+    </div>
+    {% endif %}
+    <div class="actions">
+      <button class="btn primary" id="go"><span class="spin"></span><span id="golabel">Generate shapefiles</span></button>
+      <span class="tiny">Points &amp; lines built instantly, fully on this computer.</span>
+    </div>
+    <div class="err" id="error"></div>
+  </div>
+
+  <div class="card" id="result">
+    <div class="step"><span class="n">2</span><h2>Your shapefiles are ready</h2></div>
+    <div class="ok" id="okline">
+      <svg class="check" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><path d="M11 18.5l4.5 4.5L25 13"/></svg>
+      <span id="okmsg"></span>
+    </div>
+    <div class="grid" id="stats"></div>
+    <div id="feeders" style="margin:-4px 0 16px"></div>
+    <div id="warns"></div>
+    <div class="dls">
+      <button class="btn warm" id="dlBoth">⬇&nbsp; Download both (zip)</button>
+      <button class="btn ghost" id="dlPts">Points only</button>
+      <button class="btn ghost" id="dlLns">Lines only</button>
+    </div>
+    <p class="note">
+      Each layer is a <b>complete shapefile</b> — <code>.shp .shx .dbf .prj .cpg</code> plus
+      <code>.shp.xml</code> metadata. Points are <b>EPSG:4326</b>, lines <b>EPSG:32645</b>.
+      ArcGIS rebuilds its optional <code>.sbn</code>/<code>.sbx</code> index automatically.
+    </p>
+  </div>
+
+  <footer class="reveal">
+    Lines are drawn <b>feeder by feeder</b> from the pole numbering tree — never across feeders.<br>
+    Runs locally · nothing leaves your computer.
+  </footer>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+/* theme */
+const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg>';
+const MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>';
+function applyTheme(dark){document.body.classList.toggle('dark',dark);$('#themeic').outerHTML='<svg id="themeic">'+(dark?SUN:MOON)+'</svg>';localStorage.setItem('gis-theme',dark?'dark':'light');}
+let dark=localStorage.getItem('gis-theme');dark=dark?dark==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
+applyTheme(dark);
+$('#theme').onclick=()=>applyTheme(!document.body.classList.contains('dark'));
+/* entrance */
+document.querySelectorAll('.reveal').forEach((el,i)=>setTimeout(()=>el.classList.add('in'),90+i*120));
+/* health check: warn if the Python engine isn't reachable (preview / file open) */
+fetch('default-input',{cache:'no-store'}).then(r=>{if(!r.ok)throw 0;}).catch(()=>$('#offline').classList.add('show'));
+
+const drop=$('#drop'),file=$('#file'),filelist=$('#filelist');
+const pathIn=$('#path'),go=$('#go'),err=$('#error'),result=$('#result');
+let items=[];   /* {kind:'file',file} | {kind:'path',path,name} */
+function renderList(){
+  filelist.innerHTML=items.map((it,i)=>`<div class="file show"><span class="dot"></span>`
+    +`<span>${it.kind==='file'?it.file.name:it.name}</span>`
+    +`<span class="tag">${it.kind}</span><span class="x" data-i="${i}">✕</span></div>`).join('');
+  filelist.querySelectorAll('.x').forEach(x=>x.onclick=()=>{items.splice(+x.dataset.i,1);renderList();});
+}
+function addFiles(fs){let n=0;[...fs].forEach(f=>{if(/\.(xls|xlsx|xlsm)$/i.test(f.name)){items.push({kind:'file',file:f});n++;}});if(n)clearErr();renderList();}
+function addPath(p){p=(p||'').trim().replace(/^"|"$/g,'');if(!p)return;items.push({kind:'path',path:p,name:p.split(/[\\/]/).pop()});clearErr();renderList();}
+drop.onclick=()=>file.click();
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('drag')}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('drag')}));
+drop.addEventListener('drop',ev=>{if(ev.dataTransfer.files.length)addFiles(ev.dataTransfer.files)});
+file.onchange=()=>{if(file.files.length)addFiles(file.files);file.value='';};
+if(pathIn){                                  /* local mode only */
+  $('#addpath').onclick=()=>{addPath(pathIn.value);pathIn.value='';};
+  pathIn.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addPath(pathIn.value);pathIn.value='';}});
+  $('#usedownloads').onclick=async()=>{try{const j=await(await fetch('/default-input')).json();
+    if(j.path)addPath(j.path);else showErr('No spreadsheet found in your Downloads folder — drag files in instead.');}
+    catch(e){showErr('Could not read the Downloads folder.');}};
+}
+function showErr(m){err.textContent=m;err.classList.remove('show');void err.offsetWidth;err.classList.add('show')}
+function clearErr(){err.classList.remove('show')}
+go.onclick=async()=>{clearErr();
+  if(!items.length){showErr('Add at least one spreadsheet — drag files in, or add a path.');return;}
+  go.disabled=true;go.classList.add('busy');$('#golabel').textContent='Generating…';result.style.display='none';
+  try{const fd=new FormData();const paths=[];
+    items.forEach(it=>{if(it.kind==='file')fd.append('files',it.file);else paths.push(it.path);});
+    if(paths.length)fd.append('paths',paths.join('\n'));
+    const j=await(await fetch('/convert',{method:'POST',body:fd})).json();
+    if(!j.ok)showErr(j.error||'Conversion failed.');else render(j);}
+  catch(e){showErr('Could not reach the engine. Make sure the app is running (double-click "Run GIS App.bat") and use the http://127.0.0.1:5000 tab — not a preview.');$('#offline').classList.add('show');}
+  go.disabled=false;go.classList.remove('busy');$('#golabel').textContent='Generate shapefiles';};
+function countUp(el,target,suffix){const dec=(target%1!==0),dur=900,t0=performance.now();
+  (function tick(t){let p=Math.min((t-t0)/dur,1);p=1-Math.pow(1-p,3);
+    el.textContent=(dec?(target*p).toFixed(2):Math.round(target*p))+(suffix||'');
+    if(p<1)requestAnimationFrame(tick);})(t0);}
+function statCard(v,k,s){return `<div class="stat"><div class="v" data-v="${v}" data-s="${s||''}">0</div><div class="k">${k}</div></div>`}
+function render(j){
+  $('#okmsg').innerHTML=`Generated <b>${j.points}</b> poles and <b>${j.lines}</b> lines`+(j.file_count>1?` from <b>${j.file_count}</b> files`:``)+`.`;
+  $('#stats').innerHTML=statCard(j.points,'Poles')+statCard(j.lines,'Lines')+statCard(j.feeder_count,'Feeders')+statCard(j.line_km,'Length (km)')+statCard(j.points_with_geom,'With coords');
+  $('#feeders').innerHTML=(j.feeders&&j.feeders.length)?('<span class="tiny" style="text-transform:uppercase;letter-spacing:.6px;font-weight:700">Feeders</span><br>'+j.feeders.map(f=>`<span class="pill">${f}</span>`).join('')):'';
+  $('#warns').innerHTML=(j.warnings&&j.warnings.length)?('<div class="warnbox"><h4>Please review</h4><ul>'+j.warnings.map(w=>`<li>${w}</li>`).join('')+'</ul></div>'):'';
+  const q=`?base=${encodeURIComponent(j.base)}`;
+  $('#dlBoth').onclick=()=>location.href=`/download/${j.token}/both${q}`;
+  $('#dlPts').onclick=()=>location.href=`/download/${j.token}/points${q}`;
+  $('#dlLns').onclick=()=>location.href=`/download/${j.token}/lines${q}`;
+  result.style.display='block';
+  document.querySelectorAll('#stats .stat').forEach((c,i)=>setTimeout(()=>{c.classList.add('in');const v=c.querySelector('.v');countUp(v,parseFloat(v.dataset.v),v.dataset.s);},i*90));
+  setTimeout(()=>result.scrollIntoView({behavior:'smooth',block:'start'}),120);
+}
+</script>
+</body>
+</html>
