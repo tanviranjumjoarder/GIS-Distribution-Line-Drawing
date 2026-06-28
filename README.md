@@ -7,15 +7,17 @@ numbers.
 
 ## How to run it
 
-You need Python with the packages in `requirements.txt`. Install them once:
+You need Python 3 installed. The first time on a PC, install the packages once.
+Easiest way: double-click **`Install requirements.bat`**. Or run it yourself:
 
 ```
-pip install -r requirements.txt
+py -m pip install -r requirements.txt
 ```
 
-Then double-click `Run GIS App.bat` (or run `python app.py`). Your browser opens at
-http://127.0.0.1:5000. Drag in one or more Excel files, click **Generate**, and download
-the result. Keep the small black window open while you use it.
+Then double-click **`Run GIS App.bat`**. If the packages are missing, the launcher
+installs them for you on the first run. Your browser opens at http://127.0.0.1:5000.
+Drag in one or more Excel files, click **Generate**, and download the result. Keep the
+small black window open while you use it.
 
 ## How the lines are drawn
 

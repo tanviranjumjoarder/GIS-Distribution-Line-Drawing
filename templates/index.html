@@ -96,11 +96,6 @@
   .drop .ic svg{width:26px;height:26px;color:#fff}
   .drop b{font-size:16px;font-weight:700}
   .drop small{display:block;color:var(--muted);margin-top:5px;font-size:13px}
-  .files{display:flex;flex-direction:column;gap:9px;margin-top:15px}
-  .files:empty{display:none}
-  .files .file{margin-top:0}
-  .files .file .tag{margin-left:auto;margin-right:6px;font-size:11px;font-weight:700;color:var(--muted);
-        text-transform:uppercase;letter-spacing:.5px}
   .file{margin-top:15px;display:none;align-items:center;gap:11px;font-size:14px;font-weight:600;
         background:color-mix(in srgb,var(--wire) 12%,transparent);
         border:1px solid color-mix(in srgb,var(--wire) 30%,transparent);
@@ -254,21 +249,16 @@
     <div class="drop" id="drop">
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></div>
-      <b>Drag &amp; drop one or more spreadsheets</b>
-      <small>or click to browse — accepts .xls, .xlsx, .xlsm · add as many as you like</small>
-      <input type="file" id="file" accept=".xls,.xlsx,.xlsm" multiple hidden>
+      <b>Drag &amp; drop your spreadsheet</b>
+      <small>or click to browse — accepts .xls, .xlsx, .xlsm</small>
+      <input type="file" id="file" accept=".xls,.xlsx,.xlsm" hidden>
     </div>
-    <div class="files" id="filelist"></div>
-    {% if not hosted %}
+    <div class="file" id="filebox"><span class="dot"></span><span id="filename"></span><span class="x" id="clearfile">✕</span></div>
     <div class="orpath">
-      <label>…or add files by full path</label>
-      <div style="display:flex;gap:9px">
-        <input type="text" id="path" placeholder="C:\path\to\data sheet.xlsx" spellcheck="false" style="flex:1">
-        <button class="btn ghost" id="addpath" type="button" style="padding:12px 18px">Add</button>
-      </div>
-      <button class="hintbtn" id="usedownloads" type="button">↳ Add the latest spreadsheet from my Downloads</button>
+      <label>…or a full path to a file on this computer</label>
+      <input type="text" id="path" placeholder="C:\path\to\your\data sheet.xlsx" spellcheck="false">
+      <button class="hintbtn" id="usedownloads" type="button">↳ Use the latest spreadsheet from my Downloads</button>
     </div>
-    {% endif %}
     <div class="actions">
       <button class="btn primary" id="go"><span class="spin"></span><span id="golabel">Generate shapefiles</span></button>
       <span class="tiny">Points &amp; lines built instantly, fully on this computer.</span>
@@ -317,40 +307,29 @@ document.querySelectorAll('.reveal').forEach((el,i)=>setTimeout(()=>el.classList
 /* health check: warn if the Python engine isn't reachable (preview / file open) */
 fetch('default-input',{cache:'no-store'}).then(r=>{if(!r.ok)throw 0;}).catch(()=>$('#offline').classList.add('show'));
 
-const drop=$('#drop'),file=$('#file'),filelist=$('#filelist');
+const drop=$('#drop'),file=$('#file'),filebox=$('#filebox'),filename=$('#filename');
 const pathIn=$('#path'),go=$('#go'),err=$('#error'),result=$('#result');
-let items=[];   /* {kind:'file',file} | {kind:'path',path,name} */
-function renderList(){
-  filelist.innerHTML=items.map((it,i)=>`<div class="file show"><span class="dot"></span>`
-    +`<span>${it.kind==='file'?it.file.name:it.name}</span>`
-    +`<span class="tag">${it.kind}</span><span class="x" data-i="${i}">✕</span></div>`).join('');
-  filelist.querySelectorAll('.x').forEach(x=>x.onclick=()=>{items.splice(+x.dataset.i,1);renderList();});
-}
-function addFiles(fs){let n=0;[...fs].forEach(f=>{if(/\.(xls|xlsx|xlsm)$/i.test(f.name)){items.push({kind:'file',file:f});n++;}});if(n)clearErr();renderList();}
-function addPath(p){p=(p||'').trim().replace(/^"|"$/g,'');if(!p)return;items.push({kind:'path',path:p,name:p.split(/[\\/]/).pop()});clearErr();renderList();}
+let chosen=null;
 drop.onclick=()=>file.click();
 ['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('drag')}));
 ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('drag')}));
-drop.addEventListener('drop',ev=>{if(ev.dataTransfer.files.length)addFiles(ev.dataTransfer.files)});
-file.onchange=()=>{if(file.files.length)addFiles(file.files);file.value='';};
-if(pathIn){                                  /* local mode only */
-  $('#addpath').onclick=()=>{addPath(pathIn.value);pathIn.value='';};
-  pathIn.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addPath(pathIn.value);pathIn.value='';}});
-  $('#usedownloads').onclick=async()=>{try{const j=await(await fetch('/default-input')).json();
-    if(j.path)addPath(j.path);else showErr('No spreadsheet found in your Downloads folder — drag files in instead.');}
-    catch(e){showErr('Could not read the Downloads folder.');}};
-}
+drop.addEventListener('drop',ev=>{if(ev.dataTransfer.files.length)setFile(ev.dataTransfer.files[0])});
+file.onchange=()=>{if(file.files.length)setFile(file.files[0])};
+$('#clearfile').onclick=()=>{chosen=null;file.value='';filebox.classList.remove('show')};
+function setFile(f){chosen=f;pathIn.value='';filename.textContent=f.name;filebox.classList.add('show')}
+$('#usedownloads').onclick=async()=>{try{const j=await(await fetch('/default-input')).json();
+  if(j.path){pathIn.value=j.path;chosen=null;filebox.classList.remove('show');clearErr();}
+  else showErr('No spreadsheet found in your Downloads folder — drag a file in instead.');}
+  catch(e){showErr('Could not read the Downloads folder.');}};
 function showErr(m){err.textContent=m;err.classList.remove('show');void err.offsetWidth;err.classList.add('show')}
 function clearErr(){err.classList.remove('show')}
 go.onclick=async()=>{clearErr();
-  if(!items.length){showErr('Add at least one spreadsheet — drag files in, or add a path.');return;}
+  if(!chosen && !pathIn.value.trim()){showErr('Please choose a spreadsheet or enter a file path.');return;}
   go.disabled=true;go.classList.add('busy');$('#golabel').textContent='Generating…';result.style.display='none';
-  try{const fd=new FormData();const paths=[];
-    items.forEach(it=>{if(it.kind==='file')fd.append('files',it.file);else paths.push(it.path);});
-    if(paths.length)fd.append('paths',paths.join('\n'));
+  try{const fd=new FormData();if(chosen)fd.append('file',chosen);else fd.append('path',pathIn.value.trim());
     const j=await(await fetch('/convert',{method:'POST',body:fd})).json();
     if(!j.ok)showErr(j.error||'Conversion failed.');else render(j);}
-  catch(e){showErr('Could not reach the engine. Make sure the app is running (double-click "Run GIS App.bat") and use the http://127.0.0.1:5000 tab — not a preview.');$('#offline').classList.add('show');}
+  catch(e){showErr('Could not reach the engine. Make sure the app is running (double-click “Run GIS App.bat”) and use the http://127.0.0.1:5000 tab — not a preview.');$('#offline').classList.add('show');}
   go.disabled=false;go.classList.remove('busy');$('#golabel').textContent='Generate shapefiles';};
 function countUp(el,target,suffix){const dec=(target%1!==0),dur=900,t0=performance.now();
   (function tick(t){let p=Math.min((t-t0)/dur,1);p=1-Math.pow(1-p,3);
@@ -358,7 +337,7 @@ function countUp(el,target,suffix){const dec=(target%1!==0),dur=900,t0=performan
     if(p<1)requestAnimationFrame(tick);})(t0);}
 function statCard(v,k,s){return `<div class="stat"><div class="v" data-v="${v}" data-s="${s||''}">0</div><div class="k">${k}</div></div>`}
 function render(j){
-  $('#okmsg').innerHTML=`Generated <b>${j.points}</b> poles and <b>${j.lines}</b> lines`+(j.file_count>1?` from <b>${j.file_count}</b> files`:``)+`.`;
+  $('#okmsg').innerHTML=`Generated <b>${j.points}</b> poles and <b>${j.lines}</b> lines.`;
   $('#stats').innerHTML=statCard(j.points,'Poles')+statCard(j.lines,'Lines')+statCard(j.feeder_count,'Feeders')+statCard(j.line_km,'Length (km)')+statCard(j.points_with_geom,'With coords');
   $('#feeders').innerHTML=(j.feeders&&j.feeders.length)?('<span class="tiny" style="text-transform:uppercase;letter-spacing:.6px;font-weight:700">Feeders</span><br>'+j.feeders.map(f=>`<span class="pill">${f}</span>`).join('')):'';
   $('#warns').innerHTML=(j.warnings&&j.warnings.length)?('<div class="warnbox"><h4>Please review</h4><ul>'+j.warnings.map(w=>`<li>${w}</li>`).join('')+'</ul></div>'):'';
