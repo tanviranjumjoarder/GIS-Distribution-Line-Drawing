@@ -13,7 +13,11 @@ for d in (UPLOAD_DIR, OUT_DIR):
     os.makedirs(d, exist_ok=True)
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 128 * 1024 * 1024
+
+# Hosting platforms (Render, Hugging Face Spaces, Cloud Run...) set $PORT.
+PORT = int(os.environ.get('PORT', '5000'))
+HOSTED = bool(os.environ.get('PORT'))   # when hosted: uploads only, no server-filesystem access
 
 
 def _safe(name):
@@ -24,12 +28,14 @@ def _safe(name):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', hosted=HOSTED)
 
 
 @app.route('/default-input')
 def default_input():
     """Return the most recently modified Excel file in the user's Downloads."""
+    if HOSTED:                              # never expose the server filesystem
+        return jsonify({'path': None, 'name': None})
     best = None
     try:
         cands = [os.path.join(DOWNLOADS, f) for f in os.listdir(DOWNLOADS)
@@ -48,19 +54,34 @@ def convert_route():
         out = os.path.join(OUT_DIR, token)
         os.makedirs(out, exist_ok=True)
 
-        up = request.files.get('file')
-        path = (request.form.get('path') or '').strip().strip('"')
-        if up and up.filename:
-            src = os.path.join(UPLOAD_DIR, f'{token}_{_safe(up.filename)}{os.path.splitext(up.filename)[1]}')
-            up.save(src); display = up.filename
-        elif path and os.path.isfile(path):
-            src = path; display = os.path.basename(path)
-        else:
-            return jsonify({'ok': False, 'error': 'No Excel file uploaded and no valid file path given.'}), 400
+        sources = []                       # list of (path, display_name)
+        # uploaded files (multiple) + legacy single 'file'
+        uploads = request.files.getlist('files')
+        single = request.files.get('file')
+        if single and single.filename:
+            uploads = list(uploads) + [single]
+        for i, up in enumerate(uploads):
+            if up and up.filename:
+                ext = os.path.splitext(up.filename)[1]
+                src = os.path.join(UPLOAD_DIR, f'{token}_{i}_{_safe(up.filename)}{ext}')
+                up.save(src)
+                sources.append((src, up.filename))
+        # paths (newline separated) + legacy single 'path' -- local mode only
+        if not HOSTED:
+            raw_paths = (request.form.get('paths') or '').splitlines()
+            raw_paths.append(request.form.get('path') or '')
+            for line in raw_paths:
+                p = line.strip().strip('"')
+                if p and os.path.isfile(p):
+                    sources.append((p, os.path.basename(p)))
 
-        base = _safe(display)
-        info = converter.convert(src, out, base)
-        info.update({'ok': True, 'token': token, 'base': base, 'input': display})
+        if not sources:
+            return jsonify({'ok': False, 'error': 'No spreadsheet provided.'}), 400
+
+        base = _safe(sources[0][1]) if len(sources) == 1 else 'merged_data'
+        info = converter.convert(sources, out, base)
+        info.update({'ok': True, 'token': token, 'base': base,
+                     'input': sources[0][1] if len(sources) == 1 else f'{len(sources)} files'})
         return jsonify(info)
     except Exception as e:
         traceback.print_exc()
@@ -97,6 +118,7 @@ def open_browser():
 
 
 if __name__ == '__main__':
-    threading.Thread(target=open_browser, daemon=True).start()
-    print('GIS Shapefile Generator running at  http://127.0.0.1:5000/')
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    if not HOSTED:
+        threading.Thread(target=open_browser, daemon=True).start()
+        print('GIS Shapefile Generator running at  http://127.0.0.1:5000/')
+    app.run(host='0.0.0.0' if HOSTED else '127.0.0.1', port=PORT, debug=False)
